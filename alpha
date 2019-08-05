@@ -68,15 +68,14 @@ inoremap <A-DOWN> <ESC>6<DOWN>i<RIGHT>
 nnoremap <A-UP> 6<UP>i
 nnoremap <A-DOWN> 6<DOWN>i
 " sets basic undo and redo mappings to what we're used to
-"inoremap <C-Z> <Esc><RIGHT>mau`ai
 inoremap <C-Z> <Esc>ui
 inoremap <C-Y> <Esc><C-R>li
 nnoremap <C-Z> ui
 vnoremap <C-Z> <ESC>u
 " sets ctrl-w what we're used to as ctrl-s in all modes
-nnoremap <C-W> :w<CR>
+"nnoremap <C-W> :w<CR>
+"vnoremap <C-W> <ESC>:w<CR>hi
 inoremap <C-W> <ESC>:w<CR>hi
-vnoremap <C-W> <ESC>:w<CR>hi
 " sets ctrl-e to saving and exiting the file
 inoremap <C-E> <ESC>:wq<CR>
 nnoremap <C-E> :wq<CR>
@@ -87,7 +86,7 @@ vnoremap <BS> <ESC>i<BS>
 nnoremap <END> i<END>
 nnoremap <HOME> i<HOME>
 "nnoremap <DEL> i<DEL>
-nnoremap <CR> i<RIGHT><CR>
+nnoremap <CR> i<CR>
 " When at end of line in normal mode and press arrow right, go t oinsert mode and go right
 nnoremap <expr> <RIGHT> <sid>curs_ln_end() ? '<RIGHT>' : 'i<RIGHT>'
 inoremap <expr> <C-_> <sid>filetype_comment()
@@ -101,15 +100,35 @@ function! s:filetype_comment() abort
 	if 1 " TODO: make comment based on the filetype
 	"if ft ==# 'vim'
 		" check if line already has comment
-		echom 0
+		"echom "with tab = " . getline
+		let tabless = substitute(getline, '[\t]', '\1', 'g')
+		"echom "without tab = " . tabless
+		
+		let occurrences = strlen(substitute(getline, "[^\t]", "","g"))
+		"echom "# of tabs = " .occurrences
+		let added_tabs = ""
+		for i in range(occurrences)
+			let added_tabs = added_tabs . "\<TAB>"
+		endfor
+
+		if strlen(tabless) == 0
+			return "/**/\<LEFT>\<LEFT>"
+		endif
+		
 		if stridx(getline, '/*') != -1 && stridx(getline, '*/') != -1
-			echom 2
 			" remove comment from line
-			return "\<ESC>\<RIGHT>mai\<END>\<BS>\<BS>\<HOME>\<DEL>\<DEL>\<ESC>`ai"
+			"return "\<ESC>\<RIGHT>mai\<END>\<BS>\<BS>\<HOME>\<C-RIGHT>\<DEL>\<DEL>\<ESC>`ai"
+			" remove comments from tabless
+			echom "tabless before = " .tabless
+			let tabless = substitute(tabless, '\/\*', '', '')
+			let tabless = substitute(tabless, '\*\/', '', '')
+			echom "tabless after = " .tabless
+			return "\<ESC>\<RIGHT>ma\<HOME>v\<END>\<LEFT>di" .added_tabs.tabless. "\<ESC>`ai"
 		else
-			echom 1
 			" then line has doesn't have comment
-			return "\<ESC>ma\<HOME>i/*\<END>*/\<ESC>`a3li"
+			echom 1
+			return "\<ESC>\<RIGHT>ma\<HOME>v\<END>\<LEFT>di".added_tabs."/*".tabless."*/\<ESC>`ai"
+			"return "\<ESC>ma\<HOME>i\<C-RIGHT>/*\<END>*/\<ESC>`a3li"
 		endif
 	endif
 	return ''
@@ -124,6 +143,8 @@ function! s:filetype_comment() abort
 	" add comment at start of line
 	"return "\<ESC>\<RIGHT>ma\<HOME>" . comment . "\<SPACE>`a"
 endfunction
+" sets ctrl-/ while in visual mode to wrapping the highlighted text in comments
+vnoremap <C-_> xi/**/<Esc><LEFT>Pi
 "
 "_______________________________________AUTO_COMPLETION________________________________________
 " press tab and it will autocomplet the word you are currently typing.
@@ -189,7 +210,6 @@ inoremap <expr> [ <sid>autocomplete_open_brace('[') ? '[]<LEFT>' : '['
 inoremap <expr> ( <sid>autocomplete_open_brace('(') ? '()<LEFT>' : '('
 function! s:autocomplete_open_brace(brace) abort
 	let line = split(getline('.'), '\zs')
-	echom "___line = " . string(line)
 	let length = len(line)
 	let cursdex = col('.')-1
 	let opening_brace = a:brace
@@ -373,8 +393,8 @@ function! s:seek_mate(index, mate, line_string) abort
 	return -1
 endfunction
 " if highlighted and presses wrapper, wrap selected text in wrapper
-vnoremap ( xi()<Esc>P
-vnoremap [ xi()<Esc>P
+vnoremap ( xi()<Esc>Pi
+vnoremap [ xi[]<Esc>Pi
 " quotation mark auto complete
 inoremap <expr> ' <sid>complete_apostrophe()
 function! s:complete_apostrophe() abort
@@ -404,9 +424,14 @@ function! s:complete_apostrophe() abort
 		endif
 	endif
 endfunction
-" ctrl-R maps to saving the changes and then running it in the terminal
-"inoremap <C-R> <ESC>:w<CR>:!cc -Wall -ansi -pedantic -o fctable.out fctable.c && ./fctable.out
+" adds brace stuffs
+inoremap {<CR> {<CR>}<Esc>O<TAB>;<LEFT>
+inoremap for<TAB> for (i = 0; i < N; i++) {<CR>}<Esc>O<TAB>;<Esc>k$8hs
+inoremap if<TAB> if (N) {<CR>}<ESC>O;<ESC>k$3hs
+inoremap while<TAB> while (N) {<CR>}<ESC>O;<ESC>k$3hs
+" ctrl-R (ctrl-Run) maps to saving the changes and then running it in the terminal
 inoremap <expr> <C-R> <sid>save_and_run()
+nnoremap <expr> <C-R> <sid>save_and_run()
 function! s:save_and_run() abort
 	" get filename
 	let file_name = @%
@@ -420,9 +445,67 @@ function! s:save_and_run() abort
 	endif
 	"echom name
 	let name = strpart(name, 0, strlen(name)-2)
-	"let name = substitute(name, ".c", "", "")
-	"echom name
-	"echom "\<ESC>:w\<CR>:!cc -Wall -ansi -pedantic -o ".name.".out ".name.".c && ./".name.".out\<CR>"
-	"return ''
-	return "\<ESC>:w\<CR>:!cc -Wall -ansi -pedantic -o ".name.".out ".name.".c && ./".name.".out\<CR>"
+	return "\<ESC>:w\<CR>:!cc -Wall -ansi -pedantic -o ".name.".out ".name.".c -lm && ./".name.".out\<CR>"
 endfunction
+" sets <C-P> to pasting printf("",);
+inoremap <C-P> printf("%s\n", );<ESC>8hi
+" sets <C-P> in visual mode to printing out the variable with printf
+vnoremap <C-P> yiprintf("<END> = %s\n",  <ESC>vp<END>i<RIGHT>);<ESC>9hi
+
+inoremap main<TAB> #include <stdio.h><CR>#include <stdlib.h><CR><CR>int main(int argc, char *argv[]) {<CR>}<Esc>O<TAB>return EXIT_SUCCESS;<ESC>O;<LEFT>
+"inoremap scanf<TAB> scanf("%s", N);<ESC>2hs
+"inoremap <expr> <CR> <sid>semi_colon()
+function! s:semi_colon() abort
+	" check if current line ends with ;
+	let getline = getline('.')
+	let str_list = s:str_list(getline)
+	let len = len(str_list)
+	if (len == 0)
+		return "\<CR>"
+	endif
+	if str_list[len-1] == ";" 
+		let curs_char2 = split((getline('.') . " "), '\zs')[col('.')-2]
+		if (s:curs_char() == ";" || curs_char2 == ";")
+			let tabless = substitute(getline, '[\t]', '\1', 'g')
+			if len(s:str_list(tabless)) == 1
+				return "\<DEL>\<CR>"
+			else
+				return "\<RIGHT>\<CR>;\<LEFT>"
+			endif
+			return "\<CR>;\<LEFT>"
+		else
+			return "\<END>\<CR>;\<LEFT>"
+		endif
+	endif
+	return "\<CR>"
+endfunction
+
+inoremap <expr> ; <sid>curs_char() == ";" ? '<RIGHT>' : ';'
+
+vnoremap <C-R> :s///gc
+
+
+"set filetype plugin on
+"set smartindent
+"if file open, and change file in other editor, it updates the change
+"set autoread
+"higlights stuff like int I think
+"syntax enable
+"Something-something-let's you write unicode in vim
+"set encoding=utf8
+"use unix as standard file type...which is good (no ?mark about it)
+"set ffs=unix,dos,mac
+"no annoying backup stuff, hardcore mode
+"set nobackup
+"set nowb
+"set noswapfile
+"set textwidth=80
+"wordy for java, good C
+"set list " shows stuff lie ^I and $
+"set listchars=tab:>-
+"possibly good for 244
+set nowrap
+"You know
+"sets position of new windows
+set splitbelow
+set splitright
